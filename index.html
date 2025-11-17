@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>Sound Classification Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        #status {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        button {
+            font-size: 18px;
+            padding: 12px 20px;
+            margin-right: 10px;
+        }
+        #resultTable {
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        #resultTable td, #resultTable th {
+            border: 1px solid #aaa;
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🔊 오디오 분류 데모</h1>
+
+<button onclick="startRecording()">녹음 시작</button>
+<button onclick="stopRecording()">녹음 종료</button>
+
+<p id="status">상태: 대기 중</p>
+
+<table id="resultTable">
+    <thead>
+        <tr>
+            <th>클래스</th>
+            <th>확률 (%)</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+let model;
+let recorder;
+let audioChunks = [];
+let isRecording = false;
+
+// 모델 로드
+async function loadModel() {
+    const modelURL = "./model.json";
+    const metadataURL = "./metadata.json";
+
+    model = await speechCommands.create(
+        'BROWSER_FFT',
+        undefined,
+        modelURL,
+        metadataURL
+    );
+
+    await model.ensureModelLoaded();
+    console.log("모델 로드 완료");
+}
+loadModel();
+
+// 녹음 시작
+async function startRecording() {
+    if (isRecording) return;
+    isRecording = true;
+
+    document.getElementById("status").innerText = "상태: 🎙 녹음 중…";
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);
+
+    audioChunks = [];
+
+    recorder.ondataavailable = e => audioChunks.push(e.data);
+    recorder.start();
+}
+
+// 녹음 종료
+async function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+
+    document.getElementById("status").innerText = "상태: 처리 중…";
+
+    recorder.stop();
+
+    recorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/wav" });
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioBuffer = await decodeAudioData(arrayBuffer);
+
+        await classifyAudio(audioBuffer);
+    };
+}
+
+// ArrayBuffer → AudioBuffer
+function decodeAudioData(arrayBuffer) {
+    return new Promise((resolve) => {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.decodeAudioData(arrayBuffer, resolve);
+    });
+}
+
+// 모델 분석
+async function classifyAudio(audioBuffer) {
+    const input = audioBuffer.getChannelData(0);
+
+    // Teachable Machine Audio 입력에 맞게 변환
+    const fft = model.recognize(input);
+
+    const prediction = await model.recognize(input);
+
+    updateTable(prediction);
+    document.getElementById("status").innerText = "상태: 완료";
+}
+
+// 결과 테이블 표시
+function updateTable(prediction) {
+    const tbody = document.querySelector("#resultTable tbody");
+    tbody.innerHTML = "";
+
+    const labels = model.wordLabels();
+
+    prediction.scores.forEach((score, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${labels[i]}</td>
+            <td>${(score * 100).toFixed(2)}%</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+</script>
+</body>
+</html>
