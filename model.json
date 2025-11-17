@@ -1,69 +1,162 @@
-               "dtype":"float32"
-            },
-            {
-               "name":"conv2d_4/bias",
-               "shape":[
-                  32
-               ],
-               "dtype":"float32"
-            },
-            {
-               "name":"dense_1/kernel",
-               "shape":[
-                  704,
-                  2000
-               ],
-               "dtype":"float32"
-            },
-            {
-               "name":"dense_1/bias",
-               "shape":[
-                  2000
-               ],
-               "dtype":"float32"
-            }
-         ]
-      }
-   ]
-}
-#1
-Valid (RFC 8259)
-Formatted JSON Data
-               "dtype":"float32"
-            },
-            {
-               "name":"conv2d_4/kernel",
-               "shape":[
-                  2,
-                  4,
-                  32,
-                  32
-               ],
-               "dtype":"float32"
-            },
-            {
-               "name":"conv2d_4/bias",
-               "shape":[
-                  32
-               ],
-               "dtype":"float32"
-            },
-            {
-               "name":"dense_1/kernel",
-               "shape":[
-                  704,
-                  2000
-               ],
-               "dtype":"float32"
-            },
-            {
-               "name":"dense_1/bias",
-               "shape":[
-                  2000
-               ],
-               "dtype":"float32"
-            }
-         ]
-      }
-   ]
+{
+  "modelTopology": {
+    "class_name": "Model",
+    "config": {
+      "name": "model1",
+      "layers": [
+        {
+          "name": "conv2d_1_input",
+          "class_name": "InputLayer",
+          "config": {
+            "batch_input_shape": [null, 43, 232, 1],
+            "dtype": "float32",
+            "sparse": false,
+            "name": "conv2d_1_input"
+          }
+        },
+        {
+          "name": "conv2d_1",
+          "class_name": "Conv2D",
+          "config": {
+            "filters": 8,
+            "kernel_size": [2, 8],
+            "strides": [1, 1],
+            "padding": "valid",
+            "activation": "relu",
+            "use_bias": true,
+            "trainable": false
+          }
+        },
+        {
+          "name": "max_pooling2d_1",
+          "class_name": "MaxPooling2D",
+          "config": {
+            "pool_size": [2, 2],
+            "strides": [2, 2],
+            "trainable": false
+          }
+        },
+        {
+          "name": "conv2d_2",
+          "class_name": "Conv2D",
+          "config": {
+            "filters": 32,
+            "kernel_size": [2, 4],
+            "strides": [1, 1],
+            "activation": "relu",
+            "trainable": false
+          }
+        },
+        {
+          "name": "max_pooling2d_2",
+          "class_name": "MaxPooling2D",
+          "config": {
+            "pool_size": [2, 2],
+            "strides": [2, 2],
+            "trainable": false
+          }
+        },
+        {
+          "name": "conv2d_3",
+          "class_name": "Conv2D",
+          "config": {
+            "filters": 32,
+            "kernel_size": [2, 4],
+            "activation": "relu",
+            "trainable": false
+          }
+        },
+        {
+          "name": "max_pooling2d_3",
+          "class_name": "MaxPooling2D",
+          "config": {
+            "pool_size": [2, 2],
+            "strides": [2, 2],
+            "trainable": false
+          }
+        },
+        {
+          "name": "conv2d_4",
+          "class_name": "Conv2D",
+          "config": {
+            "filters": 32,
+            "kernel_size": [2, 4],
+            "activation": "relu",
+            "trainable": false
+          }
+        },
+        {
+          "name": "max_pooling2d_4",
+          "class_name": "MaxPooling2D",
+          "config": {
+            "pool_size": [2, 2],
+            "strides": [1, 2],
+            "trainable": false
+          }
+        },
+        {
+          "name": "flatten_1",
+          "class_name": "Flatten",
+          "config": {
+            "trainable": false
+          }
+        },
+        {
+          "name": "dropout_1",
+          "class_name": "Dropout",
+          "config": {
+            "rate": 0.25,
+            "trainable": false
+          }
+        },
+        {
+          "name": "dense_1",
+          "class_name": "Dense",
+          "config": {
+            "units": 2000,
+            "activation": "relu",
+            "trainable": false
+          }
+        },
+        {
+          "name": "sequential_3",
+          "class_name": "Sequential",
+          "config": {
+            "layers": [
+              {
+                "class_name": "Dense",
+                "config": {
+                  "units": 4,
+                  "activation": "softmax",
+                  "name": "NewHeadDense",
+                  "trainable": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "input_layers": [["conv2d_1_input", 0, 0]],
+      "output_layers": [["sequential_3", 1, 0]]
+    }
+  },
+  "weightsManifest": [
+    {
+      "paths": ["weights.bin"],
+      "weights": [
+        { "name": "NewHeadDense/kernel", "shape": [2000, 4], "dtype": "float32" },
+        { "name": "NewHeadDense/bias", "shape": [4], "dtype": "float32" },
+        { "name": "conv2d_1/kernel", "shape": [2, 8, 1, 8], "dtype": "float32" },
+        { "name": "conv2d_1/bias", "shape": [8], "dtype": "float32" },
+        { "name": "conv2d_2/kernel", "shape": [2, 4, 8, 32], "dtype": "float32" },
+        { "name": "conv2d_2/bias", "shape": [32], "dtype": "float32" },
+        { "name": "conv2d_3/kernel", "shape": [2, 4, 32, 32], "dtype": "float32" },
+        { "name": "conv2d_3/bias", "shape": [32], "dtype": "float32" },
+        { "name": "conv2d_4/kernel", "shape": [2, 4, 32, 32], "dtype": "float32" },
+        { "name": "conv2d_4/bias", "shape": [32], "dtype": "float32" },
+        { "name": "dense_1/kernel", "shape": [704, 2000], "dtype": "float32" },
+        { "name": "dense_1/bias", "shape": [2000], "dtype": "float32" }
+      ]
+    }
+  ]
 }
