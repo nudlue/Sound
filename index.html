@@ -1,150 +1,233 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <title>Sound Classification Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands"></script>
+  <meta charset="utf-8" />
+  <title>오디오 분류 데모 (녹음 → 종료 → 분석)</title>
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-        }
-        #status {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-        button {
-            font-size: 18px;
-            padding: 12px 20px;
-            margin-right: 10px;
-        }
-        #resultTable {
-            margin-top: 20px;
-            border-collapse: collapse;
-        }
-        #resultTable td, #resultTable th {
-            border: 1px solid #aaa;
-            padding: 10px 20px;
-        }
-    </style>
+  <!-- TFJS + Speech Commands -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.6.0/dist/speech-commands.min.js"></script>
+
+  <style>
+    body { font-family: "Noto Sans KR", Arial, sans-serif; margin: 36px; }
+    h1 { display:flex; align-items:center; gap:10px; }
+    button { padding:10px 18px; font-size:16px; margin-right:8px; }
+    #status { margin-top:18px; font-weight:700; }
+    table { margin-top:14px; border-collapse:collapse; width:360px; }
+    th, td { border:1px solid #ccc; padding:8px 12px; text-align:left; }
+    .hidden { display:none; }
+  </style>
 </head>
-
 <body>
+  <h1>🔊 오디오 분류 데모</h1>
 
-<h1>🔊 오디오 분류 데모</h1>
+  <div>
+    <button id="btnStart">녹음 시작</button>
+    <button id="btnStop" disabled>녹음 종료</button>
+  </div>
 
-<button onclick="startRecording()">녹음 시작</button>
-<button onclick="stopRecording()">녹음 종료</button>
+  <p id="status">상태: 대기 중</p>
 
-<p id="status">상태: 대기 중</p>
-
-<table id="resultTable">
+  <table id="resultTable" class="hidden">
     <thead>
-        <tr>
-            <th>클래스</th>
-            <th>확률 (%)</th>
-        </tr>
+      <tr><th>클래스</th><th>확률 (%)</th></tr>
     </thead>
     <tbody></tbody>
-</table>
+  </table>
 
-<script>
-let model;
-let recorder;
-let audioChunks = [];
-let isRecording = false;
+  <script>
+  // ====== 설정: 모델 파일 경로 (같은 폴더에 올려둔 상태) ======
+  const MODEL_URL = "./model.json";
+  const METADATA_URL = "./metadata.json";
 
-// 모델 로드
-async function loadModel() {
-    const modelURL = "./model.json";
-    const metadataURL = "./metadata.json";
+  // 전역 변수
+  let recognizer = null;
+  let audioChunks = [];
+  let mediaRecorder = null;
+  let isRecording = false;
 
-    model = await speechCommands.create(
-        'BROWSER_FFT',
+  // 버튼
+  const btnStart = document.getElementById("btnStart");
+  const btnStop = document.getElementById("btnStop");
+  const statusEl = document.getElementById("status");
+  const resultTable = document.getElementById("resultTable");
+  const resultTbody = resultTable.querySelector("tbody");
+
+  // 모델 로드 (speech-commands, BROWSER_FFT)
+  async function loadModel() {
+    statusEl.innerText = "상태: 모델 로드 중...";
+    try {
+      recognizer = await speechCommands.create(
+        "BROWSER_FFT",
         undefined,
-        modelURL,
-        metadataURL
-    );
+        MODEL_URL,
+        METADATA_URL
+      );
+      await recognizer.ensureModelLoaded();
+      statusEl.innerText = "상태: 모델 로드 완료. 녹음 시작 가능";
+      console.log("모델 라벨:", recognizer.wordLabels());
+    } catch (err) {
+      console.error("모델 로드 실패:", err);
+      statusEl.innerText = "상태: 모델 로드 실패(콘솔 확인)";
+    }
+  }
+  loadModel();
 
-    await model.ensureModelLoaded();
-    console.log("모델 로드 완료");
-}
-loadModel();
-
-// 녹음 시작
-async function startRecording() {
+  // 녹음 시작
+  btnStart.addEventListener("click", async () => {
     if (isRecording) return;
-    isRecording = true;
+    // 마이크 권한 요청 및 MediaRecorder 시작
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
 
-    document.getElementById("status").innerText = "상태: 🎙 녹음 중…";
+      mediaRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) audioChunks.push(e.data);
+      };
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recorder = new MediaRecorder(stream);
+      mediaRecorder.onstart = () => {
+        isRecording = true;
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        statusEl.innerText = "상태: 🎙 녹음 중...";
+      };
 
-    audioChunks = [];
+      mediaRecorder.start();
+    } catch (err) {
+      console.error("마이크 접근 실패:", err);
+      statusEl.innerText = "상태: 마이크 접근 실패(권한 허용 필요)";
+    }
+  });
 
-    recorder.ondataavailable = e => audioChunks.push(e.data);
-    recorder.start();
-}
-
-// 녹음 종료
-async function stopRecording() {
+  // 녹음 종료 & 처리
+  btnStop.addEventListener("click", async () => {
     if (!isRecording) return;
-    isRecording = false;
+    mediaRecorder.stop();
 
-    document.getElementById("status").innerText = "상태: 처리 중…";
+    mediaRecorder.onstop = async () => {
+      isRecording = false;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      statusEl.innerText = "상태: 녹음 종료 — 처리 중...";
 
-    recorder.stop();
+      // Blob -> ArrayBuffer -> AudioBuffer
+      const blob = new Blob(audioChunks, { type: "audio/webm" }); // 브라우저에 따라 webm/wav
+      const arrayBuffer = await blob.arrayBuffer();
 
-    recorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/wav" });
-        const arrayBuffer = await blob.arrayBuffer();
-        const audioBuffer = await decodeAudioData(arrayBuffer);
+      try {
+        const audioCtx = new (window.OfflineAudioContext || window.AudioContext)();
+        const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+        // 모델 호환 샘플레이트 (일반적으로 44100). speech-commands가 내부에서 처리 가능하지만
+        // 안정성을 위해 모델이 기대하는 표준 샘플레이트(44100)으로 리샘플링 수행
+        const targetRate = 44100;
+        const resampled = await resampleAudioBuffer(decoded, targetRate);
+        const floatData = getMonoFloat32(resampled);
 
-        await classifyAudio(audioBuffer);
+        // 모델에 넣어 예측
+        await classifyFloat32(floatData);
+      } catch (err) {
+        console.error("오디오 디코딩/처리 오류:", err);
+        statusEl.innerText = "상태: 오디오 처리 실패(콘솔 확인)";
+      }
     };
-}
+  });
 
-// ArrayBuffer → AudioBuffer
-function decodeAudioData(arrayBuffer) {
-    return new Promise((resolve) => {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        audioCtx.decodeAudioData(arrayBuffer, resolve);
-    });
-}
+  // ===== 헬퍼: AudioBuffer를 target sampleRate로 리샘플링 =====
+  async function resampleAudioBuffer(audioBuffer, targetSampleRate) {
+    if (audioBuffer.sampleRate === targetSampleRate) return audioBuffer;
 
-// 모델 분석
-async function classifyAudio(audioBuffer) {
-    const input = audioBuffer.getChannelData(0);
+    const channels = audioBuffer.numberOfChannels;
+    const duration = audioBuffer.duration;
+    const length = Math.ceil(duration * targetSampleRate);
 
-    // Teachable Machine Audio 입력에 맞게 변환
-    const fft = model.recognize(input);
+    // OfflineAudioContext를 이용한 리샘플링
+    const offlineCtx = new OfflineAudioContext(channels, length, targetSampleRate);
+    const bufferSource = offlineCtx.createBufferSource();
+    bufferSource.buffer = audioBuffer;
+    bufferSource.connect(offlineCtx.destination);
+    bufferSource.start(0);
 
-    const prediction = await model.recognize(input);
+    const rendered = await offlineCtx.startRendering();
+    return rendered;
+  }
 
-    updateTable(prediction);
-    document.getElementById("status").innerText = "상태: 완료";
-}
+  // ===== 헬퍼: AudioBuffer -> 모노 Float32Array (채널 평균) =====
+  function getMonoFloat32(audioBuffer) {
+    const ch = audioBuffer.numberOfChannels;
+    const l = audioBuffer.length;
+    const result = new Float32Array(l);
+    // average channels
+    if (ch === 1) {
+      result.set(audioBuffer.getChannelData(0));
+    } else {
+      for (let i = 0; i < l; i++) {
+        let sum = 0;
+        for (let c = 0; c < ch; c++) sum += audioBuffer.getChannelData(c)[i];
+        result[i] = sum / ch;
+      }
+    }
+    return result;
+  }
 
-// 결과 테이블 표시
-function updateTable(prediction) {
-    const tbody = document.querySelector("#resultTable tbody");
-    tbody.innerHTML = "";
+  // ===== 모델에 Float32Array 넣고 예측 받기 =====
+  async function classifyFloat32(float32Audio) {
+    if (!recognizer) {
+      console.error("모델이 로드되지 않음");
+      statusEl.innerText = "상태: 모델 로드 대기 중...";
+      return;
+    }
 
-    const labels = model.wordLabels();
+    try {
+      // speech-commands recognizer의 recognize 함수는
+      // raw audio Float32Array를 받아 내부에서 스펙트로그램 처리를 해줌.
+      // (BROWSER_FFT 옵션 사용 시)
+      const result = await recognizer.recognize(float32Audio);
 
-    prediction.scores.forEach((score, i) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${labels[i]}</td>
-            <td>${(score * 100).toFixed(2)}%</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-</script>
+      // result: {scores: Float32Array, spectrogram: {...}, ...}
+      if (!result || !result.scores) {
+        console.warn("예측 결과 없음:", result);
+        statusEl.innerText = "상태: 예측 실패(결과 없음)";
+        return;
+      }
+
+      // 결과 출력
+      updateResultTable(result.scores, recognizer.wordLabels());
+      statusEl.innerText = "상태: 완료";
+    } catch (err) {
+      console.error("예측 중 오류:", err);
+      statusEl.innerText = "상태: 예측 실패(콘솔 확인)";
+    }
+  }
+
+  // ===== 결과 테이블 갱신 =====
+  function updateResultTable(scores, labels) {
+    resultTbody.innerHTML = "";
+    // scores는 Float32Array같은 배열
+    const arr = Array.from(scores);
+    // 매핑: label & score
+    for (let i = 0; i < arr.length; i++) {
+      const tr = document.createElement("tr");
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = labels[i] ?? `class ${i}`;
+      const tdScore = document.createElement("td");
+      tdScore.textContent = (arr[i] * 100).toFixed(2) + "%";
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdScore);
+      resultTbody.appendChild(tr);
+    }
+    resultTable.classList.remove("hidden");
+  }
+
+  // ========== 유용한 디버그: model metadata 보기 ==========
+  // (모델 로드 후 라벨 확인 등)
+  window.getModelInfo = function() {
+    if (!recognizer) { console.log("모델 없음"); return; }
+    console.log("labels:", recognizer.wordLabels());
+    // spectrogram info (if available)
+    if (recognizer.params) console.log("recognizer.params:", recognizer.params);
+  };
+
+  </script>
 </body>
 </html>
